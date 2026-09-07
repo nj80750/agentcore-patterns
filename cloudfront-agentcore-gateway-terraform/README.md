@@ -36,20 +36,50 @@ and API Gateway targets. See [the agent target](#the-agentcore-runtime-agent).
 
 ## How it works
 
-```
-client ──HTTPS──> CloudFront (your domain, your certificate)
-                      │
-                      ├── /.well-known/oauth-protected-resource
-                      │      └── Lambda@Edge, answered at the edge
-                      │
-                      └── /mcp
-                             └── AgentCore Gateway ──> Lambda tool
-                                                   ├─> API Gateway tool
-                                                   └─> AgentCore Runtime agent ──> Bedrock
+```mermaid
+flowchart TB
+    client["<b>MCP client</b><br/>claude.ai · Claude Code · curl"]
+
+    dns["<b>Amazon Route 53</b> or your external DNS provider<br/>mcp.example.com → CloudFront"]
+
+    subgraph cf["Amazon CloudFront · your domain, your ACM certificate"]
+        direction LR
+        wk["<b>/.well-known/oauth-protected-resource</b><br/>Lambda@Edge on viewer-request<br/>answered at the edge, names <i>your</i> domain"]
+        mcp["<b>/mcp</b><br/>transparent proxy<br/>AllViewerExceptHostHeader"]
+    end
+
+    idp["<b>Authorization server</b><br/>Amazon Cognito user pool created by this pattern<br/>or an OIDC provider you already run"]
+
+    subgraph region["AWS Region"]
+        direction TB
+        gw["<b>Amazon Bedrock AgentCore Gateway</b><br/>MCP endpoint"]
+        t1["<b>AWS Lambda</b><br/>helloLambda"]
+        t2["<b>Amazon API Gateway</b><br/>helloApi"]
+        t3["<b>AgentCore Runtime</b><br/>helloAgent"]
+        gw --> t1
+        gw --> t2
+        gw --> t3
+    end
+
+    model["<b>Amazon Bedrock</b><br/>model invoked by the agent"]
+
+    client -->|HTTPS| dns
+    dns --> cf
+    mcp -->|"Host replaced with the origin's own domain"| gw
+    t3 --> model
+
+    client -.->|"discovers where to authenticate"| wk
+    client -.->|"signs in, receives access token"| idp
+    gw -.->|"validates the JWT"| idp
 ```
 
 Three tool targets, all deployed, so a real MCP client pointed at your domain can
 call a plain function, a REST API, and an agent that reasons with a model.
+
+The two paths through CloudFront do different jobs. `/mcp` is a transparent proxy to
+the Gateway. `/.well-known/oauth-protected-resource` never reaches the origin at all —
+the edge function answers it, and the next two sections explain why both of those
+choices are load-bearing.
 
 Two things make this work that are not obvious, and both are the reason this
 pattern exists.
