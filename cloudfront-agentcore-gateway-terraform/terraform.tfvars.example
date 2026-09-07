@@ -1,0 +1,103 @@
+# Copy to terraform.tfvars and edit. terraform.tfvars is gitignored.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+
+# =============================================================================
+# REQUIRED
+# =============================================================================
+
+# The hostname you want in front of your AgentCore Gateway.
+#
+# USE A SUBDOMAIN. A CNAME cannot exist at a zone apex, so a bare "example.com"
+# only works if your DNS provider supports ALIAS or ANAME records — Route 53 does,
+# most registrars do not.
+custom_domain = "mcp.example.com"
+
+
+# =============================================================================
+# DNS — pick ONE path
+# =============================================================================
+
+# PATH A — your domain is in a Route 53 public hosted zone in THIS AWS account.
+# One apply, nothing to paste. The zone must be in the same account you are
+# deploying to; a zone in another account is Path B.
+route53_zone_id = "Z0123456789ABCDEFGHIJ"
+
+# PATH B — your domain is anywhere else: GoDaddy, Namecheap, Cloudflare, or
+# another AWS account. Comment out the line above and uncomment these two.
+#
+#   1. apply           -> prints dns_validation_record
+#   2. add that record at your provider
+#   3. check it with the dns_validation_check output
+#   4. set external_dns_validated = true, apply again
+#   5. add dns_target_record at your provider
+#
+# route53_zone_id        = ""
+# external_dns_validated = false
+
+
+# =============================================================================
+# AUTH — defaults to a Cognito user pool created for you
+# =============================================================================
+
+# "cognito" (default) creates a user pool and app client, so this deploys with no
+# identity prerequisites. It does NOT create any user — see the README.
+#
+# auth_mode = "cognito"
+
+# "external" points the Gateway at an identity provider you already run.
+#
+# Set oidc_allowed_audience for Okta, Entra or Auth0, whose tokens carry a real
+# "aud" claim. Set oidc_allowed_clients for Cognito, whose access tokens carry
+# "client_id" and no "aud". One or the other, never both.
+#
+# auth_mode             = "external"
+# oidc_discovery_url    = "https://dev-12345.okta.com/oauth2/default/.well-known/openid-configuration"
+# oidc_allowed_audience = ["api://default"]
+#
+# Leave oidc_allowed_scopes empty for a username-password sign-in. Those tokens
+# carry aws.cognito.signin.user.admin rather than a custom scope, so requiring one
+# rejects every token the flow produces.
+# oidc_allowed_scopes = []
+
+
+# =============================================================================
+# OPTIONAL — defaults are fine
+# =============================================================================
+
+# Prefix for resource names. Does not need to be globally unique.
+# project = "agentcore-mcp"
+
+# Region for the Gateway, the Lambda and the REST API. Confirm AgentCore Gateway
+# is available there first. The certificate and the Lambda@Edge function always go
+# to us-east-1 regardless, because CloudFront requires it.
+# region = "us-east-1"
+
+# The third tool target, an MCP server on AgentCore Runtime that invokes a Bedrock
+# model, is ON by default. You do not need to set anything for it — but you do need
+# to build its package before running terraform, because the artifact's hash is read
+# at plan time:
+#
+#   ./agent/build.sh
+#
+# Requires uv and Bedrock model access for agent_model_id below.
+#
+# Set this to false ONLY if you cannot get model access or cannot install uv. You
+# then get the Lambda and API Gateway targets, and no build step.
+#
+# agent_enabled = false
+
+# The model the agent invokes.
+#
+# Must be a cross-region INFERENCE PROFILE — a bare model ID fails with
+# ValidationException. The leading "us." is a GEOGRAPHY, so outside the US you need
+# a different identifier, for example "eu.anthropic...". List what is available:
+#
+#   aws bedrock list-inference-profiles --region <region>
+#
+# agent_model_id = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+# cloudfront_price_class = "PriceClass_100"
+# origin_read_timeout    = 60
+# log_retention_days     = 7
+# tags                   = { Project = "agentcore-mcp-frontdoor" }

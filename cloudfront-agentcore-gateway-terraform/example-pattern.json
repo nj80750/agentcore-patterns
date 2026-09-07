@@ -1,0 +1,76 @@
+{
+  "title": "Amazon CloudFront to Amazon Bedrock AgentCore Gateway",
+  "description": "Put your own custom domain in front of an Amazon Bedrock AgentCore Gateway, with OAuth 2.0 authorization.",
+  "language": "Python",
+  "level": "300",
+  "framework": "Terraform",
+  "introBox": {
+    "headline": "How it works",
+    "text": [
+      "An Amazon Bedrock AgentCore Gateway exposes tools over MCP on an AWS-assigned regional hostname, and that hostname cannot carry a custom domain. This pattern places Amazon CloudFront in front of it so clients connect to a name you own, with your own TLS certificate.",
+      "Two things make this work that are not obvious. First, the Gateway derives its identity from the first label of the HTTP Host header, so CloudFront must not forward the viewer's Host. The managed AllViewerExceptHostHeader origin request policy handles this by substituting the origin's own domain name, which is why no routing function is needed.",
+      "Second, an MCP client that receives a 401 fetches an OAuth 2.0 Protected Resource Metadata document (RFC 9728) to discover where to authenticate. Proxied through, the Gateway returns its own document naming its regional hostname, and a compliant client refuses to authenticate because the resource identifier does not match the server it connected to. A Lambda@Edge function generates that document at the edge instead, naming your domain.",
+      "Authorization is a Cognito user pool created by the pattern, or an identity provider you already run. DNS is either a Route 53 hosted zone Terraform manages for you, or any external provider with two records you add by hand.",
+      "The Gateway is deployed with three tool targets: an AWS Lambda function, an Amazon API Gateway REST API, and an MCP server running on Amazon Bedrock AgentCore Runtime that invokes a Bedrock model. A real MCP client pointed at your domain can call all three end to end."
+    ]
+  },
+  "gitHub": {
+    "template": {
+      "repoURL": "https://github.com/aws-samples/serverless-patterns/tree/main/cloudfront-agentcore-gateway-terraform",
+      "templateURL": "serverless-patterns/cloudfront-agentcore-gateway-terraform",
+      "projectFolder": "cloudfront-agentcore-gateway-terraform",
+      "templateFile": "main.tf"
+    }
+  },
+  "resources": {
+    "bullets": [
+      {
+        "text": "Amazon Bedrock AgentCore Gateway custom domains",
+        "link": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-custom-domains.html"
+      },
+      {
+        "text": "Understanding origin request policies, including AllViewerExceptHostHeader",
+        "link": "https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/origin-request-understand-origin-request-policy.html"
+      },
+      {
+        "text": "OAuth 2.0 Protected Resource Metadata (RFC 9728)",
+        "link": "https://datatracker.ietf.org/doc/html/rfc9728"
+      },
+      {
+        "text": "Model Context Protocol authorization specification",
+        "link": "https://modelcontextprotocol.io/specification/basic/authorization"
+      },
+      {
+        "text": "Amazon Bedrock AgentCore Gateway targets",
+        "link": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-targets.html"
+      }
+    ]
+  },
+  "deploy": {
+    "text": [
+      "cp terraform.tfvars.example terraform.tfvars",
+      "terraform init",
+      "terraform apply"
+    ]
+  },
+  "testing": {
+    "text": [
+      "See the README for creating a user, obtaining a token, and running ./test/smoke.sh"
+    ]
+  },
+  "cleanup": {
+    "text": [
+      "terraform destroy"
+    ]
+  },
+  "authors": [
+    {
+      "name": "Nitin Jain",
+      "role": "Senior Solutions Architect, AWS"
+    },
+    {
+      "name": "Preenesh Nayanasudhan",
+      "role": "Senior Solutions Architect, AWS"
+    }
+  ]
+}

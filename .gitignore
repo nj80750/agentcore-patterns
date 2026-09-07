@@ -1,0 +1,37 @@
+# Terraform state — never commit. May contain resource identifiers and,
+# depending on the provider, secrets.
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.tfstate.lock.info
+
+# Provider lock file. Deliberately NOT committed for a published pattern: a lock
+# generated on darwin_arm64 has no hashes for linux_amd64, so a reader on Linux
+# hits a checksum error on `terraform init` until they run
+# `terraform providers lock -platform=...`. That friction is worse than allowing
+# a patch-version drift in an example.
+.terraform.lock.hcl
+
+# Your own variable values. The example file is committed; this is not.
+*.tfvars
+*.tfvars.json
+
+terraform.rc
+.terraformrc
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+crash.log
+crash.*.log
+
+# Build output
+.build/
+dist/
+build/
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/

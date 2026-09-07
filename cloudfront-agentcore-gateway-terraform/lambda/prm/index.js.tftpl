@@ -1,0 +1,97 @@
+/**
+ * OAuth 2.0 Protected Resource Metadata (RFC 9728) for the front door.
+ *
+ * WHY THIS FUNCTION EXISTS
+ *
+ * An MCP client that receives a 401 goes looking for a protected-resource
+ * document to learn where to authenticate. If the request is simply proxied
+ * through to the Gateway, the Gateway answers with ITS OWN document, naming its
+ * own regional hostname:
+ *
+ *   { "resource": "https://<gw-id>.gateway.bedrock-agentcore.<region>.amazonaws.com/mcp" }
+ *
+ * A spec-compliant client compares that identifier against the server it actually
+ * connected to, sees a mismatch, and refuses to authenticate — with no login
+ * prompt and no useful error. Checks that use a pre-obtained bearer token still
+ * pass, which is what makes this failure easy to miss.
+ *
+ * So the document has to be generated at the edge, naming the front door.
+ *
+ * WHY THE HOSTNAME IS NOT TEMPLATED IN
+ *
+ * It is read from the viewer's Host header instead. That breaks a Terraform
+ * dependency cycle — the distribution would have to exist before the function that
+ * the distribution references — and it means this code is identical whether you
+ * are on a cloudfront.net name or your own domain. Adding a custom domain needs no
+ * change here at all.
+ *
+ * WHY LAMBDA@EDGE AND NOT A CLOUDFRONT FUNCTION
+ *
+ * This function alone would fit in a CloudFront Function: it builds a short JSON
+ * string and makes no network calls. Lambda@Edge is used for consistency with the
+ * multi-region design this pattern is the first phase of, where the edge also runs
+ * an origin-request router that reads a regional flag from DynamoDB. CloudFront
+ * Functions cannot make network calls, so that router must be Lambda@Edge, and
+ * running two different edge primitives side by side is not worth the saving.
+ *
+ * Lambda@Edge constraints that shaped this: us-east-1 only, x86_64 only, no
+ * environment variables (hence templating), and CloudFront can only associate a
+ * published version.
+ */
+
+// Injected by Terraform at plan time. Templated, not runtime config.
+const AUTHORIZATION_SERVERS = ${authorization_servers};
+const SCOPES_SUPPORTED = ${scopes_supported};
+
+// The Gateway's MCP path. The resource identifier must be the full endpoint a
+// client talks to, not the bare origin.
+const MCP_PATH = '/mcp';
+
+exports.handler = async (event) => {
+  const request = event.Records[0].cf.request;
+
+  // In a viewer-request event this is the host the CLIENT used, before CloudFront
+  // rewrites it for the origin. That is the whole point: it is the front door's
+  // name, which is what the document has to advertise.
+  const hostHeader = request.headers.host && request.headers.host[0];
+  const host = hostHeader && hostHeader.value;
+
+  if (!host) {
+    // Should not happen — Host is mandatory in HTTP/1.1 and CloudFront always
+    // populates it. Fail loudly rather than emitting a document whose resource is
+    // "undefined", which would send a client somewhere meaningless.
+    return {
+      status: '500',
+      statusDescription: 'Internal Server Error',
+      headers: jsonHeaders(),
+      body: JSON.stringify({ error: 'missing_host_header' }),
+    };
+  }
+
+  const body = {
+    resource: 'https://' + host + MCP_PATH,
+    authorization_servers: AUTHORIZATION_SERVERS,
+  };
+
+  // Omitted entirely when empty rather than sent as [], because an empty array
+  // reads as "this resource supports no scopes" instead of "scopes are not used".
+  if (SCOPES_SUPPORTED.length > 0) {
+    body.scopes_supported = SCOPES_SUPPORTED;
+  }
+
+  return {
+    status: '200',
+    statusDescription: 'OK',
+    headers: jsonHeaders(),
+    body: JSON.stringify(body),
+  };
+};
+
+function jsonHeaders() {
+  return {
+    'content-type': [{ key: 'Content-Type', value: 'application/json' }],
+    // Discovery metadata is cheap to regenerate and expensive to get wrong.
+    // no-store keeps a stale document from outliving a configuration change.
+    'cache-control': [{ key: 'Cache-Control', value: 'no-store' }],
+  };
+}
